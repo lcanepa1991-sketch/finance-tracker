@@ -134,6 +134,21 @@ input,textarea{font:inherit;color:inherit}
 .brow .right{text-align:right;min-width:92px}
 .brow .right .v{font-size:18px;font-weight:600}
 .brow .right .s{font-size:15px;color:var(--muted)}
+.bedit{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:48px;border-radius:24px;background:var(--card);box-shadow:var(--shadow);font-size:16px;font-weight:600;color:var(--green);margin-top:14px}
+.bedit svg{width:18px;height:18px}
+.bsec{display:flex;justify-content:space-between;align-items:baseline;margin:22px 2px 8px;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}
+.bsec .num{font-size:16px;text-transform:none;letter-spacing:0;color:var(--text)}
+.bitem{display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:52px}
+.bitem + .bitem{border-top:1px solid var(--line)}
+.bitem .k{flex:1;min-width:0;font-size:15px;line-height:1.25}
+.bitem input{width:104px;height:38px;border:0;border-radius:12px;background:var(--chip);color:var(--text);text-align:right;padding:0 10px;font-size:17px;font-weight:600;outline:0}
+.bitem .eu{color:var(--muted);font-size:15px}
+.dpill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:13px;font-weight:700;white-space:nowrap;vertical-align:2px;margin-left:6px}
+.dpill.good{background:rgba(31,191,131,.16);color:var(--green)} .dpill.bad{background:rgba(242,85,74,.16);color:var(--red)} .dpill.even{background:var(--chip);color:var(--muted)}
+.btot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0}
+.btot + .btot{border-top:1px solid var(--line)}
+.btot .k{font-size:16px;color:var(--muted)} .btot .v{text-align:right} .btot .v b{font-size:17px}
+.btot .v .dpill{margin:4px 0 0}
 .subvoci{padding:0 0 8px 58px}
 .subvoci .kv{font-size:14px;padding:4px 0}
 .subvoci .kv .k::before{display:none}
@@ -293,8 +308,8 @@ const API = {
   call(action, payload){
     const mode=this.mode();
     if(mode==='gas'){
-      const fn={data:'apiGetData',add:'apiAdd',update:'apiUpdate',delete:'apiDelete'}[action];
-      const arg = action==='delete'? payload.id : (action==='data'? undefined : payload.tx);
+      const fn={data:'apiGetData',add:'apiAdd',update:'apiUpdate',delete:'apiDelete',budget:'apiBudget'}[action];
+      const arg = action==='delete'? payload.id : action==='budget'? payload.items : (action==='data'? undefined : payload.tx);
       return new Promise((res,rej)=>{ const r=google.script.run.withSuccessHandler(x=>res(JSON.parse(x))).withFailureHandler(e=>rej(e)); arg===undefined? r[fn]() : r[fn](arg); });
     }
     if(mode==='http'){
@@ -322,6 +337,10 @@ function applyLocal(d, op){
   if(op.action==='add') add(op.payload.tx,1);
   if(op.action==='delete'){ const old=d.tx.find(t=>t.id===op.payload.id); if(old) add(old,-1); }
   if(op.action==='update'){ const old=d.tx.find(t=>t.id===op.payload.tx.id); if(old) add(old,-1); add(op.payload.tx,1); }
+  if(op.action==='budget' && d.plan){
+    op.payload.items.forEach(it=>d.plan.forEach(sec=>sec.items.forEach(x=>{ if(x.row===it.row) x.amount=it.amount; })));
+    d.budgets=d.budgets||{}; d.plan.forEach(sec=>{ d.budgets[sec.key]=Math.round(sec.items.reduce((a,x)=>a+x.amount,0)*100)/100; });
+  }
 }
 function setServer(d){
   S.server=d; LS.set('ft_data',d);
@@ -584,6 +603,14 @@ function viewDetail(){
     : `<div class="note">Per questo periodo nel foglio c'è solo il totale mensile: le singole transazioni compaiono da quando le inserisci con l'app.</div>`}`;
 }
 
+/* Scostamento % dal budget. moreIsGood: true per le entrate, false per le spese */
+function dpct(actual, target, moreIsGood){
+  if(!(target>0)) return '';
+  const d=Math.round((actual-target)/target*100);
+  if(d===0) return `<span class="dpill even">in linea</span>`;
+  const good = moreIsGood? d>0 : d<0;
+  return `<span class="dpill ${good?'good':'bad'}">${d>0?'+':'−'}${Math.abs(d)}% ${d>0?'sopra':'sotto'}</span>`;
+}
 function viewBudget(){
   const t=totals('M',S.y,S.m); const sp=split(t); const B=S.data.budgets||{};
   const isCur = S.y===today.getFullYear() && S.m===today.getMonth();
@@ -596,7 +623,7 @@ function viewBudget(){
     const spent=sp.groups[g]||0, bud=B[g]||0; const over=spent>bud;
     const w=Math.min(100,bud?spent/bud*100:0);
     const open=S.openGroups[g];
-    return `<button class="brow" data-act="toggle:${g}">${cluster(g)}<div class="mid"><div class="n">${g}</div>
+    return `<button class="brow" data-act="toggle:${g}">${cluster(g)}<div class="mid"><div class="n">${g}${dpct(spent,bud,false)}</div>
       <div class="track"><div class="fill" style="width:${w}%;background:${over?COLORS.Sfizi:COLORS.Entrate}"></div>${pace?`<div class="today" style="left:${pace*100}%;background:${over?COLORS.Sfizi:COLORS.Entrate}"></div>`:''}</div></div>
       <div class="right"><div class="v num">${eur(spent)}</div><div class="s num">di ${eur(bud)}</div></div></button>
       ${open?`<div class="subvoci">${vociOf(g).map(([v,a])=>`<div class="kv"><span class="k">${esc(v)}</span><span class="num">${eur(a)}</span></div>`).join('')||'<div class="kv"><span class="k" style="color:var(--muted)">Nessuna spesa</span></div>'}</div>`:''}`;
@@ -606,10 +633,12 @@ function viewBudget(){
   return `<div class="top"><h1>Budget</h1></div>${syncBanner()}${monthNav('bmonth')}
   <div class="card"><div class="kv" style="padding-top:0;color:var(--muted);font-size:16px"><span>Categorie</span><span>Speso / Budget</span></div>
     ${withB.map(row).join('')||'<div class="empty">Nessun budget impostato</div>'}</div>
-  <div class="card"><div class="kv" style="padding:0"><span style="font-size:16px;color:var(--muted)">Totale con budget</span><b class="num ${totSpent>totBud?'ko':'ok'}">${eur(totSpent)} / ${eur(totBud)}</b></div>
-    ${B.Reddito?`<div class="kv" style="padding-bottom:0"><span style="font-size:16px;color:var(--muted)">Entrate previste / reali</span><b class="num">${eur(B.Reddito)} / ${eur(sp.inc)}</b></div>`:''}</div>
+  <div class="card" style="padding-top:6px;padding-bottom:6px">
+    <div class="btot"><span class="k">Spese totali<br><small>speso / budget</small></span><div class="v"><b class="num ${totSpent>totBud?'ko':'ok'}">${eur(totSpent)} / ${eur(totBud)}</b><br>${dpct(totSpent,totBud,false)}</div></div>
+    ${B.Reddito?`<div class="btot"><span class="k">Entrate<br><small>reali / previste</small></span><div class="v"><b class="num">${eur(sp.inc)} / ${eur(B.Reddito)}</b><br>${dpct(sp.inc,B.Reddito,true)}</div></div>`:''}</div>
   ${noB.length?`<div class="sectitle">Senza budget</div><div class="card" style="padding-top:6px;padding-bottom:6px">${noB.map(g=>{ const spent=sp.groups[g]||0; const open=S.openGroups[g]; return `<button class="brow" data-act="toggle:${g}">${cluster(g)}<div class="mid"><div class="n" style="margin:0">${g}</div></div><div class="right"><div class="v num">${eur(spent)}</div><div class="s">questo mese</div></div></button>${open?`<div class="subvoci">${vociOf(g).map(([v,a])=>`<div class="kv"><span class="k">${esc(v)}</span><span class="num">${eur(a)}</span></div>`).join('')||'<div class="kv"><span class="k" style="color:var(--muted)">Nessuna spesa</span></div>'}</div>`:''}`; }).join('')}</div>`:''}
-  <div class="note">I budget arrivano dal foglio "Piano di Spesa": cambiali lì e si aggiornano qui. Il pallino indica a che punto del mese sei.</div>`;
+  ${(S.data.plan||[]).length?`<button class="bedit" data-act="bedit">${ic('pencil')}Modifica budget</button>`:''}
+  <div class="note">I budget arrivano dal foglio "Piano di Spesa": puoi cambiarli qui o direttamente nel foglio. Il pallino indica a che punto del mese sei. La percentuale confronta quanto hai speso (o incassato) con il budget: verde se va bene, rosso se no.</div>`;
 }
 
 function viewMore(){
@@ -715,7 +744,7 @@ function openForm(tx){
   document.getElementById('sheet').classList.add('open'); document.getElementById('backdrop').classList.add('open');
   if(!tx) setTimeout(()=>{ const a=document.getElementById('amt'); a&&a.focus(); },320);
 }
-function closeForm(){ S.form=null; document.getElementById('sheet').classList.remove('open'); document.getElementById('backdrop').classList.remove('open'); }
+function closeForm(){ S.form=null; S.bform=null; document.getElementById('sheet').classList.remove('open'); document.getElementById('backdrop').classList.remove('open'); }
 function formValid(){ const f=S.form; const n=Number(String(f.importo).replace(/\./g,'').replace(',','.')); const needCl=isFree(cats().find(c=>c.voce===f.voce)); return f.voce && n>0 && (!needCl || String(f.cliente||'').trim()); }
 function renderForm(){
   const f=S.form; const out=f.tipo==='uscita';
@@ -768,6 +797,33 @@ function footHTML(){ const f=S.form; const out=f.tipo==='uscita'; const miss=for
   const n=Number(String(f.importo).replace(/\./g,'').replace(',','.'));
   const what = f.id? 'Salva modifiche' : (out?'Aggiungi uscita':'Aggiungi entrata');
   return `<div class="need">${miss? esc(miss) : ''}</div><button class="primary ${out?'out':''}" data-act="save" ${miss?'data-off="1"':''}>${what}${n>0?' · '+eur(n):''}</button>`; }
+/* Modifica budget: le voci del "Piano di Spesa" */
+const BCOL = k => k==='Reddito'? COLORS.Entrate : (COLORS[k]||COLORS.Lavoro);
+const bnum = v => { const n=Number(String(v||'').replace(/\./g,'').replace(',','.')); return isFinite(n)&&n>0? Math.round(n*100)/100 : 0; };
+function openBudget(){
+  const vals={}; (S.data.plan||[]).forEach(sec=>sec.items.forEach(it=>{ vals[it.row]= it.amount? String(it.amount).replace('.',',') : ''; }));
+  S.bform={vals}; renderBudgetForm();
+  document.getElementById('sheet').classList.add('open'); document.getElementById('backdrop').classList.add('open');
+}
+function bsum(sec){ return sec.items.reduce((a,it)=>a+bnum(S.bform.vals[it.row]),0); }
+function renderBudgetForm(){
+  const plan=S.data.plan||[];
+  document.getElementById('sheet').innerHTML=`
+  <div class="sh-head"><button class="link" data-act="close-sheet">Annulla</button><div class="sh-title">Modifica budget</div><span style="min-width:70px"></span></div>
+  <div class="sh-body">
+    ${plan.map(sec=>`<div class="bsec" style="color:${BCOL(sec.key)}"><span>${esc(sec.title)}</span><span class="num" id="bsum-${sec.key}">${eur(bsum(sec))}</span></div>
+      <div class="list">${sec.items.map(it=>`<label class="bitem"><span class="k">${esc(it.label)}</span><input class="bin num" data-row="${it.row}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(S.bform.vals[it.row])}" autocomplete="off"><span class="eu">€</span></label>`).join('')}</div>`).join('')}
+    <div class="note">Le voci sono quelle del foglio "Piano di Spesa". Per aggiungerne una nuova scrivila nel foglio, nella riga "➕ Aggiungi qui".</div>
+  </div>
+  <div class="sh-foot"><div class="need"></div><button class="primary" data-act="bsave">Salva budget</button></div>`;
+  icons();
+}
+function saveBudget(){
+  const items=[]; (S.data.plan||[]).forEach(sec=>sec.items.forEach(it=>{ const a=bnum(S.bform.vals[it.row]); if(Math.abs(a-it.amount)>0.004) items.push({row:it.row,amount:a}); }));
+  closeForm();
+  if(!items.length){ toast('Nessuna modifica'); return; }
+  commit({action:'budget',payload:{items}}); toast('Budget aggiornato');
+}
 function refreshSaveBtns(){ const ft=document.getElementById('shfoot'); if(ft) ft.innerHTML=footHTML(); }
 function saveForm(){
   if(!formValid()){
@@ -826,6 +882,8 @@ document.addEventListener('click',e=>{
     case 'pickcl': S.form.cliente=arg; S.form.newCl=false; renderForm(); break;
     case 'newcl': S.form.newCl=true; S.form.cliente=''; renderForm(); setTimeout(()=>{ const i=document.getElementById('fcl'); i&&i.focus(); },30); break;
     case 'save': saveForm(); break;
+    case 'bedit': openBudget(); break;
+    case 'bsave': saveBudget(); break;
     case 'del': { const t=S.data.tx.find(x=>x.id===arg); if(!t) break;
       if(confirm('Eliminare '+vname(t.voce)+' '+eur(t.importo)+' anche dal foglio?')){ if(S.form) closeForm(); commit({action:'delete',payload:{id:arg}}); toast('Transazione eliminata'); }
       else closeSwipes(); break; }
@@ -847,9 +905,11 @@ document.addEventListener('input',e=>{
   if(e.target.id==='q'){ S.search=e.target.value; const pos=e.target.selectionStart; render(); const q=document.getElementById('q'); if(q){ q.focus(); q.setSelectionRange(pos,pos); } }
   if(e.target.id==='amt'){ let v=e.target.value.replace(/[^0-9.,]/g,'').replace('.',','); const parts=v.split(','); if(parts.length>2) v=parts[0]+','+parts.slice(1).join(''); if(parts[1]&&parts[1].length>2) v=parts[0]+','+parts[1].slice(0,2); e.target.value=v; e.target.size=Math.max(1,v.length); S.form.importo=v; refreshSaveBtns(); }
   if(e.target.id==='fnota'){ S.form.nota=e.target.value; }
+  if(e.target.classList.contains('bin') && S.bform){ let v=e.target.value.replace(/[^0-9.,]/g,'').replace('.',','); const parts=v.split(','); if(parts.length>2) v=parts[0]+','+parts.slice(1).join(''); if(parts[1]&&parts[1].length>2) v=parts[0]+','+parts[1].slice(0,2); e.target.value=v;
+    S.bform.vals[e.target.dataset.row]=v; (S.data.plan||[]).forEach(sec=>{ const el=document.getElementById('bsum-'+sec.key); if(el) el.textContent=eur(bsum(sec)); }); }
   if(e.target.id==='fcl'){ S.form.cliente=e.target.value; S.form.newCl=true; refreshSaveBtns(); }
 });
-document.addEventListener('keydown',e=>{ if(e.key==='Enter' && (e.target.id==='amt'||e.target.id==='fnota')){ e.target.blur(); } });
+document.addEventListener('keydown',e=>{ if(e.key==='Enter' && (e.target.id==='amt'||e.target.id==='fnota'||e.target.classList.contains('bin'))){ e.target.blur(); } });
 document.addEventListener('change',e=>{
   if(e.target.id==='fdate' && e.target.value){ S.form.date=e.target.value; renderForm(); }
   if(e.target.id==='exp-from' || e.target.id==='exp-to'){ const E=expState(); E[e.target.id==='exp-from'?'from':'to']=Number(e.target.value); render(); }
@@ -868,7 +928,12 @@ function DEMO(){
   const categories=[]; Object.entries(G).forEach(([g,vs])=>vs.forEach(v=>categories.push({voce:v,gruppo:g,tipo:g==='Entrate'?'entrata':'uscita',auto:/automatico/.test(v)})));
   const matrix={[y]:{}};
   Object.entries(base).forEach(([v,b])=>{ matrix[y][v]=Array.from({length:12},(_,i)=> i>mo ? 0 : Math.round(b*(0.7+rnd()*0.6))); });
-  const d={years:[y],categories,matrix,budgets:{Bisogni:1200,Sfizi:400,Investimenti:200,Risparmi:150,Reddito:2400},tx:[],clients:{[y]:['Cliente A','Cliente B','Da assegnare']},sheetUrl:'',updatedAt:new Date().toISOString()};
+  const d={years:[y],categories,matrix,budgets:{Bisogni:1200,Sfizi:400,Investimenti:200,Risparmi:150,Reddito:2400},
+    plan:[{key:'Reddito',title:'Entrate previste',items:[{row:7,label:'Stipendio netto',amount:2400}]},
+      {key:'Bisogni',title:'Spese essenziali',items:[{row:24,label:'Casa',amount:700},{row:25,label:'Trasporti',amount:200},{row:26,label:'Spesa',amount:300}]},
+      {key:'Sfizi',title:'Spese flessibili',items:[{row:52,label:'Ristoranti',amount:250},{row:53,label:'Shopping',amount:150}]},
+      {key:'Risparmi',title:'Risparmio',items:[{row:36,label:'Fondo di emergenza',amount:150}]},
+      {key:'Investimenti',title:'Investimenti',items:[{row:44,label:'ETF',amount:200}]}],tx:[],clients:{[y]:['Cliente A','Cliente B','Da assegnare']},sheetUrl:'',updatedAt:new Date().toISOString()};
   const dd=(n)=>isoDate(new Date(y,mo,Math.max(1,today.getDate()-n)));
   [[0,'Ristoranti',24,'Pizza'],[1,'Spesa',36.5,''],[2,'Libri',14,''],[3,'Trasporti',12,'Treno']]
     .forEach(([n,v,a,nota],i)=>applyLocal(d,{action:'add',payload:{tx:{id:'demo'+i,date:dd(n),voce:v,importo:a,nota}}}));
