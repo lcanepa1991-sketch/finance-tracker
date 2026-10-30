@@ -169,7 +169,8 @@ input,textarea{font:inherit;color:inherit}
 .cbtn.on{background:var(--card);box-shadow:var(--shadow)}
 .cbtn.on .ic{transform:scale(1.08);box-shadow:0 0 0 3px var(--card),0 0 0 5px var(--c)}
 .primary{width:100%;height:54px;border-radius:27px;background:var(--green);color:#fff;font-size:17px;font-weight:700;margin-top:22px}
-.primary:disabled{opacity:.4}
+.primary:disabled,.primary[data-off]{opacity:.4}
+.sh-head .link[data-off]{opacity:.35}
 .danger{width:100%;height:50px;border-radius:25px;color:var(--red);font-size:16px;font-weight:600;margin-top:10px;background:var(--card)}
 
 /* Misc */
@@ -715,7 +716,7 @@ function renderForm(){
   document.getElementById('sheet').innerHTML=`
   <div class="sh-head"><button class="link" data-act="close-sheet">Annulla</button>
     <div class="seg"><button class="${out?'on':''}" data-act="ftype:uscita">Uscita</button><button class="${!out?'on':''}" data-act="ftype:entrata">Entrata</button></div>
-    <button class="link r" data-act="save" ${formValid()?'':'disabled'}>Salva</button></div>
+    <button class="link r" data-act="save" ${formValid()?'':'data-off="1"'}>Salva</button></div>
   <div class="sh-body">
     <div class="amount" style="color:${out?'var(--text)':'var(--green)'}"><span class="sign">${out?'−':'+'}</span><input id="amt" class="num" inputmode="decimal" placeholder="0" value="${esc(f.importo)}" size="${Math.max(1,String(f.importo||'0').length)}" autocomplete="off"><span class="eur">€</span></div>
     <div class="chips">
@@ -726,15 +727,21 @@ function renderForm(){
     <input class="notein" id="fnota" placeholder="Nota (facoltativa)" value="${esc(f.nota)}" maxlength="120" autocomplete="off">
     ${grid}
     ${clientBox}
-    <button class="primary" data-act="save" ${formValid()?'':'disabled'}>${f.id?'Salva modifiche':'Aggiungi'}</button>
+    <button class="primary" data-act="save" ${formValid()?'':'data-off="1"'}>${f.id?'Salva modifiche':'Aggiungi'}</button>
     ${f.id?`<button class="danger" data-act="delete">Elimina transazione</button>`:''}
   </div>`;
   document.querySelector('#sheet .sh-body').scrollTop=keepScroll;
   icons();
 }
-function refreshSaveBtns(){ document.querySelectorAll('#sheet [data-act="save"]').forEach(b=>b.disabled=!formValid()); }
+function refreshSaveBtns(){ const ok=formValid(); document.querySelectorAll('#sheet [data-act="save"]').forEach(b=>ok? b.removeAttribute('data-off') : b.setAttribute('data-off','1')); }
 function saveForm(){
-  if(!formValid()) return;
+  if(!formValid()){
+    const f=S.form; const n=Number(String(f.importo).replace(/\./g,'').replace(',','.'));
+    if(!(n>0)){ toast('Inserisci un importo'); const a=document.getElementById('amt'); a&&a.focus(); return; }
+    const a=document.getElementById('amt'); a&&a.blur();
+    if(!f.voce){ toast('Scegli una categoria'); const g=document.querySelector('#sheet .cgroup'); g&&g.scrollIntoView({behavior:'smooth',block:'start'}); return; }
+    toast('Scegli o scrivi il cliente'); const c=[...document.querySelectorAll('#sheet .cgroup')].pop(); c&&c.scrollIntoView({behavior:'smooth',block:'start'}); return;
+  }
   const f=S.form; const imp=Math.round(Number(String(f.importo).replace(/\./g,'').replace(',','.'))*100)/100;
   const tx={ id:f.id||uid(), date:f.date, voce:f.voce, importo:imp, nota:(f.nota||'').trim() };
   if(isFree(cats().find(c=>c.voce===f.voce))) tx.cliente=String(f.cliente||'').trim();
