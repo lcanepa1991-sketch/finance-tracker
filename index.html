@@ -666,7 +666,8 @@ function viewMore(){
     Ogni spesa o entrata che aggiungi finisce nel foglio <b style="color:var(--text)">Transazioni</b>. I fogli degli anni (2026, 2027…) sommano da soli le transazioni nelle voci giuste, e la Dashboard si aggiorna.<br><br>
     Quando inserisci la prima spesa di un anno nuovo, il foglio di quell'anno viene creato in automatico.<br><br>
     <span style="color:${COLORS.Bisogni};font-weight:600">Blu</span> = bisogni, <span style="color:${COLORS.Sfizi};font-weight:600">rosso</span> = sfizi, <span style="color:${COLORS.Investimenti};font-weight:600">viola</span> = investimenti, <span style="color:${COLORS.Risparmi};font-weight:600">verde acqua</span> = risparmi, <span style="color:${COLORS.Lavoro};font-weight:600">grigio</span> = lavoro.
-  </div>`;
+  </div>
+  <div class="hint" style="margin:18px 0 6px">Versione app ${APP_VERSION}</div>`;
 }
 
 /* ================== Esporta CSV ================== */
@@ -940,8 +941,23 @@ function DEMO(){
   return d;
 }
 
+/* ================== Aggiornamento automatico ==================
+   iPhone tiene in memoria la pagina: all'apertura controlla se su GitHub c'è una versione nuova e la carica. */
+const APP_VERSION='2026-10-30.4';
+function checkUpdate(){
+  if(location.protocol!=='https:') return;
+  fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
+    const m=t.match(/APP_VERSION='([^']+)'/); if(!m || m[1]===APP_VERSION) return;
+    if(sessionStorage.getItem('ft_upd')===m[1]) return; // già provato: niente ricariche a vuoto
+    try{ sessionStorage.setItem('ft_upd',m[1]); }catch(e){}
+    location.replace(location.pathname+'?v='+encodeURIComponent(m[1]));
+  }).catch(()=>{});
+}
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') checkUpdate(); });
+
 /* ================== Avvio ================== */
 (function start(){
+  checkUpdate();
   const cached=LS.get('ft_data',null);
   if(cached && API.mode()!=='demo') setServer(cached);
   render();
