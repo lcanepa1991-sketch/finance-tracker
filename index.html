@@ -206,6 +206,22 @@ input,textarea{font:inherit;color:inherit}
 .sh-foot .need{text-align:center;font-size:13px;color:var(--muted);margin-bottom:8px;min-height:16px}
 .sh-foot .primary{margin:0}
 .primary.out{background:var(--red)}
+.sh-head .link svg{width:20px;height:20px;vertical-align:-4px;margin-left:-6px}
+.catpill{display:flex;align-items:center;gap:10px;margin:6px auto 0;padding:5px 14px 5px 5px;border-radius:30px;background:var(--card);box-shadow:var(--shadow);font-size:16px;font-weight:600}
+.catpill .ic{width:36px;height:36px} .catpill .ic svg{width:18px;height:18px}
+.catpill > svg{width:16px;height:16px;color:var(--muted)}
+.amt-body .amount{margin:14px 0 4px}
+.amt-body .chips{margin:8px 0 10px}
+.amt-body .notein{height:44px}
+#amtv{font-size:56px;font-weight:800;letter-spacing:-1px;line-height:1.1}
+#amtv.ph{opacity:.35}
+.kp-foot{padding-top:8px}
+.kp-foot .need{min-height:0;margin-bottom:4px;color:var(--red)}
+.kp-foot .need:empty{display:none}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
+.key{height:52px;border-radius:14px;background:var(--card);box-shadow:var(--shadow);font-size:25px;font-weight:600;color:var(--text);touch-action:manipulation;-webkit-user-select:none;user-select:none;display:flex;align-items:center;justify-content:center}
+.key:active{background:var(--chip);transform:scale(.97)}
+.key svg{width:26px;height:26px}
 .danger{width:100%;height:50px;border-radius:25px;color:var(--red);font-size:16px;font-weight:600;margin-top:10px;background:var(--card)}
 
 /* Misc */
@@ -741,9 +757,9 @@ function openForm(tx){
   const base = tx ? {...tx} : { id:null, tipo:'uscita', importo:'', voce:null, date:TODAY_ISO, nota:'' };
   if(!tx && S.y*12+S.m !== today.getFullYear()*12+today.getMonth() && S.tab==='home'){ base.date=isoDate(new Date(S.y,S.m,Math.min(today.getDate(),new Date(S.y,S.m+1,0).getDate()))); }
   if(tx) base.importo=String(tx.importo).replace('.',',');
+  base.step = tx? 'amt' : 'cat';
   S.form=base; renderForm();
   document.getElementById('sheet').classList.add('open'); document.getElementById('backdrop').classList.add('open');
-  if(!tx) setTimeout(()=>{ const a=document.getElementById('amt'); a&&a.focus(); },320);
 }
 function closeForm(){ S.form=null; S.bform=null; document.getElementById('sheet').classList.remove('open'); document.getElementById('backdrop').classList.remove('open'); }
 function formValid(){ const f=S.form; const n=Number(String(f.importo).replace(/\./g,'').replace(',','.')); const needCl=isFree(cats().find(c=>c.voce===f.voce)); return f.voce && n>0 && (!needCl || String(f.cliente||'').trim()); }
@@ -751,87 +767,76 @@ function renderForm(){
   const f=S.form; const out=f.tipo==='uscita';
   const fy=Number(f.date.slice(0,4)); const latest=Math.max(...(S.data.years||[fy]));
   const yearOk=c=>!c.years || c.years.includes(fy) || (fy>latest && c.years.includes(latest));
-  const list=cats().filter(c=>(out? c.tipo==='uscita' : c.tipo==='entrata') && (!c.auto || isFree(c)) && (yearOk(c) || c.voce===f.voce));
-  const groups=out? GROUP_ORDER : ['Entrate'];
+  const sheet=document.getElementById('sheet');
+  const trash = f.id?`<button class="link trash" data-act="del:${esc(f.id)}" aria-label="Elimina">${ic('trash-2')}</button>`:'<span style="min-width:70px"></span>';
+
+  // Passaggio 1: tipo + categoria
+  if(f.step==='cat'){
+    const list=cats().filter(c=>(out? c.tipo==='uscita' : c.tipo==='entrata') && (!c.auto || isFree(c)) && (yearOk(c) || c.voce===f.voce));
+    const groups=out? GROUP_ORDER : ['Entrate'];
+    const grid=groups.map(g=>{ const cs=list.filter(c=>c.gruppo===g); if(!cs.length) return '';
+      return `<div class="cgroup" style="color:${COLORS[g]}">${g}</div><div class="cgrid">${cs.map(c=>`<button class="cbtn ${f.voce===c.voce?'on':''}" style="--c:${COLORS[g]}" data-act="pickcat:${esc(c.voce)}">${catIcon(c.voce,g)}<span>${esc(vname(c.voce))}</span></button>`).join('')}</div>`; }).join('');
+    const back = f.voce? `<button class="link" data-act="step:amt">${ic('chevron-left')}Indietro</button>` : `<button class="link" data-act="close-sheet">Annulla</button>`;
+    sheet.innerHTML=`
+    <div class="sh-head">${back}<div class="sh-title">${f.id?'Modifica':'Nuova transazione'}</div>${trash}</div>
+    <div class="sh-body">
+      <div class="tsel">
+        <button class="out ${out?'on':''}" data-act="ftype:uscita"><span class="d">${ic('arrow-up-right')}</span>Uscita</button>
+        <button class="in ${!out?'on':''}" data-act="ftype:entrata"><span class="d">${ic('arrow-down-left')}</span>Entrata</button>
+      </div>
+      <div class="flabel">Tocca la categoria</div>
+      ${grid}
+    </div>`;
+    icons(); return;
+  }
+
+  // Passaggio 2: importo con tastierino, pulsante subito sotto
+  const c=cats().find(x=>x.voce===f.voce)||{gruppo:''};
   const yd=new Date(today); yd.setDate(yd.getDate()-1); const YD=isoDate(yd);
   const custom = f.date!==TODAY_ISO && f.date!==YD;
-  const prevBody=document.querySelector('#sheet .sh-body'); const keepScroll=prevBody? prevBody.scrollTop : 0;
-  const grid=groups.map(g=>{ const cs=list.filter(c=>c.gruppo===g); if(!cs.length) return '';
-    return `<div class="cgroup" style="color:${COLORS[g]}">${g}</div><div class="cgrid">${cs.map(c=>`<button class="cbtn ${f.voce===c.voce?'on':''}" style="--c:${COLORS[g]}" data-act="pickcat:${esc(c.voce)}">${catIcon(c.voce,g)}<span>${esc(vname(c.voce))}</span></button>`).join('')}</div>`; }).join('');
-  const freeSel = isFree(cats().find(c=>c.voce===f.voce));
+  const freeSel = isFree(c);
   const known = clientsFor(fy); const isNewCl = f.cliente!=null && f.cliente!=='' && !known.some(n=>n.toLowerCase()===String(f.cliente).toLowerCase());
-  const clientBox = !freeSel ? '' : `<div class="cgroup" style="color:${COLORS.Entrate}">Cliente</div>
-    <div class="chips" style="justify-content:flex-start">${known.map(n=>`<button class="chip ${f.cliente===n?'on':''}" data-act="pickcl:${esc(n)}">${esc(n)}</button>`).join('')}
-      <button class="chip ${f.newCl||isNewCl?'on':''}" data-act="newcl">${ic('plus')}Nuovo</button></div>
-    ${f.newCl||isNewCl?`<input class="notein" id="fcl" placeholder="Nome del nuovo cliente" value="${esc(isNewCl?f.cliente:'')}" maxlength="60" autocomplete="off">`:''}`;
-  const selC = f.voce? cats().find(c=>c.voce===f.voce) : null;
-  document.getElementById('sheet').innerHTML=`
-  <div class="sh-head"><button class="link" data-act="close-sheet">Annulla</button>
-    <div class="sh-title">${f.id?'Modifica':'Nuova transazione'}</div>
-    ${f.id?`<button class="link trash" data-act="del:${esc(f.id)}" aria-label="Elimina">${ic('trash-2')}</button>`:'<span style="min-width:70px"></span>'}</div>
-  <div class="sh-body">
-    <div class="tsel">
-      <button class="out ${out?'on':''}" data-act="ftype:uscita"><span class="d">${ic('arrow-up-right')}</span>Uscita</button>
-      <button class="in ${!out?'on':''}" data-act="ftype:entrata"><span class="d">${ic('arrow-down-left')}</span>Entrata</button>
-    </div>
-    <div class="amount" style="color:${out?'var(--red)':'var(--green)'}"><span class="sign">${out?'−':'+'}</span><input id="amt" class="num" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(f.importo)}" size="${Math.max(1,String(f.importo||'0').length)}" autocomplete="off"><span class="eur">€</span></div>
-    <div class="flabel">Categoria ${selC? '· <b>'+esc(vname(selC.voce))+'</b>' : ''}</div>
-    ${grid}
+  const clientBox = !freeSel ? '' : `<div class="chips">${known.map(n=>`<button class="chip ${f.cliente===n?'on':''}" data-act="pickcl:${esc(n)}">${esc(n)}</button>`).join('')}
+      <button class="chip ${f.newCl||isNewCl?'on':''}" data-act="newcl">${ic('plus')}Nuovo cliente</button></div>
+    ${f.newCl||isNewCl?`<input class="notein" id="fcl" placeholder="Nome del nuovo cliente" value="${esc(isNewCl?f.cliente:'')}" maxlength="60" autocomplete="off" enterkeyhint="done">`:''}`;
+  sheet.innerHTML=`
+  <div class="sh-head">${f.id?`<button class="link" data-act="close-sheet">Annulla</button>`:`<button class="link" data-act="step:cat">${ic('chevron-left')}Categorie</button>`}
+    <div class="sh-title">${f.id?'Modifica':(out?'Nuova uscita':'Nuova entrata')}</div>${trash}</div>
+  <div class="sh-body amt-body">
+    <button class="catpill" data-act="step:cat">${catIcon(f.voce,c.gruppo)}<span>${esc(vname(f.voce))}</span>${ic('chevron-down')}</button>
+    <div class="amount" style="color:${out?'var(--red)':'var(--green)'}"><span class="sign">${out?'−':'+'}</span><span id="amtv" class="num ${f.importo?'':'ph'}">${esc(f.importo||'0')}</span><span class="eur">€</span></div>
     ${clientBox}
-    <div class="flabel">Data e nota</div>
-    <div class="chips" style="justify-content:flex-start">
+    <div class="chips">
       <button class="chip ${f.date===TODAY_ISO?'on':''}" data-act="fdate:${TODAY_ISO}">Oggi</button>
       <button class="chip ${f.date===YD?'on':''}" data-act="fdate:${YD}">Ieri</button>
       <label class="chip ${custom?'on':''}">${ic('calendar')}${custom?dayLabel(f.date):'Altra data'}<input type="date" id="fdate" value="${f.date}" max="2100-12-31"></label>
     </div>
-    <input class="notein" id="fnota" placeholder="Nota (facoltativa)" value="${esc(f.nota)}" maxlength="120" autocomplete="off">
-    ${f.id?`<button class="danger" data-act="del:${esc(f.id)}">Elimina transazione</button>`:''}
+    <input class="notein" id="fnota" placeholder="Nota (facoltativa)" value="${esc(f.nota)}" maxlength="120" autocomplete="off" enterkeyhint="done">
   </div>
-  <div class="sh-foot" id="shfoot">${footHTML()}</div>`;
-  document.querySelector('#sheet .sh-body').scrollTop=keepScroll;
-  icons();
+  <div class="sh-foot kp-foot" id="shfoot">${footHTML()}</div>`;
+  icons(); refreshSaveBtns();
 }
 function formMissing(){ const f=S.form; const n=Number(String(f.importo).replace(/\./g,'').replace(',','.'));
   if(!(n>0)) return 'Inserisci un importo'; if(!f.voce) return 'Scegli una categoria';
   if(isFree(cats().find(c=>c.voce===f.voce)) && !String(f.cliente||'').trim()) return 'Scegli o scrivi il cliente'; return ''; }
-function footHTML(){ const f=S.form; const out=f.tipo==='uscita'; const miss=formMissing();
-  const n=Number(String(f.importo).replace(/\./g,'').replace(',','.'));
-  const what = f.id? 'Salva modifiche' : (out?'Aggiungi uscita':'Aggiungi entrata');
-  return `<div class="need">${miss? esc(miss) : ''}</div><button class="primary ${out?'out':''}" data-act="save" ${miss?'data-off="1"':''}>${what}${n>0?' · '+eur(n):''}</button>`; }
-/* Modifica budget: le voci del "Piano di Spesa" */
-const BCOL = k => k==='Reddito'? COLORS.Entrate : (COLORS[k]||COLORS.Lavoro);
-const bnum = v => { const n=Number(String(v||'').replace(/\./g,'').replace(',','.')); return isFinite(n)&&n>0? Math.round(n*100)/100 : 0; };
-function openBudget(){
-  const vals={}; (S.data.plan||[]).forEach(sec=>sec.items.forEach(it=>{ vals[it.row]= it.amount? String(it.amount).replace('.',',') : ''; }));
-  S.bform={vals}; renderBudgetForm();
-  document.getElementById('sheet').classList.add('open'); document.getElementById('backdrop').classList.add('open');
+function footHTML(){
+  const keys=['1','2','3','4','5','6','7','8','9',',','0','del'];
+  return `<div class="need" id="fneed"></div>
+  <div class="keypad">${keys.map(k=>`<button class="key" data-act="key:${k}" aria-label="${k==='del'?'Cancella':k}">${k==='del'?ic('delete'):k}</button>`).join('')}</div>
+  <button class="primary" data-act="save" id="fsave"></button>`;
 }
-function bsum(sec){ return sec.items.reduce((a,it)=>a+bnum(S.bform.vals[it.row]),0); }
-function renderBudgetForm(){
-  const plan=S.data.plan||[];
-  document.getElementById('sheet').innerHTML=`
-  <div class="sh-head"><button class="link" data-act="close-sheet">Annulla</button><div class="sh-title">Modifica budget</div><span style="min-width:70px"></span></div>
-  <div class="sh-body">
-    ${plan.map(sec=>`<div class="bsec" style="color:${BCOL(sec.key)}"><span>${esc(sec.title)}</span><span class="num" id="bsum-${sec.key}">${eur(bsum(sec))}</span></div>
-      <div class="list">${sec.items.map(it=>`<label class="bitem"><span class="k">${esc(it.label)}</span><input class="bin num" data-row="${it.row}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(S.bform.vals[it.row])}" autocomplete="off"><span class="eu">€</span></label>`).join('')}</div>`).join('')}
-    <div class="note">Le voci sono quelle del foglio "Piano di Spesa". Per aggiungerne una nuova scrivila nel foglio, nella riga "➕ Aggiungi qui".</div>
-  </div>
-  <div class="sh-foot"><div class="need"></div><button class="primary" data-act="bsave">Salva budget</button></div>`;
-  icons();
+function refreshSaveBtns(){
+  const f=S.form; if(!f || f.step!=='amt') return; const out=f.tipo==='uscita';
+  const n=Number(String(f.importo).replace(/\./g,'').replace(',','.')); const miss=formMissing();
+  const v=document.getElementById('amtv'); if(v){ v.textContent=f.importo||'0'; v.classList.toggle('ph',!f.importo); }
+  const b=document.getElementById('fsave'); if(b){ b.className='primary '+(out?'out':''); b.textContent=(f.id?'Salva modifiche':(out?'Aggiungi uscita':'Aggiungi entrata'))+(n>0?' · '+eur(n):''); miss? b.setAttribute('data-off','1') : b.removeAttribute('data-off'); }
+  const nd=document.getElementById('fneed'); if(nd) nd.textContent = (miss && miss!=='Inserisci un importo')? miss : '';
 }
-function saveBudget(){
-  const items=[]; (S.data.plan||[]).forEach(sec=>sec.items.forEach(it=>{ const a=bnum(S.bform.vals[it.row]); if(Math.abs(a-it.amount)>0.004) items.push({row:it.row,amount:a}); }));
-  closeForm();
-  if(!items.length){ toast('Nessuna modifica'); return; }
-  commit({action:'budget',payload:{items}}); toast('Budget aggiornato');
-}
-function refreshSaveBtns(){ const ft=document.getElementById('shfoot'); if(ft) ft.innerHTML=footHTML(); }
 function saveForm(){
   if(!formValid()){
     const f=S.form; const n=Number(String(f.importo).replace(/\./g,'').replace(',','.'));
-    if(!(n>0)){ toast('Inserisci un importo'); const a=document.getElementById('amt'); a&&a.focus(); return; }
-    const a=document.getElementById('amt'); a&&a.blur();
-    if(!f.voce){ toast('Scegli una categoria'); const g=document.querySelector('#sheet .cgroup'); g&&g.scrollIntoView({behavior:'smooth',block:'start'}); return; }
+    if(!(n>0)){ toast('Inserisci un importo'); return; }
+    if(!f.voce){ f.step='cat'; renderForm(); toast('Scegli una categoria'); return; }
     toast('Scegli o scrivi il cliente'); const c=[...document.querySelectorAll('#sheet .cgroup')].pop(); c&&c.scrollIntoView({behavior:'smooth',block:'start'}); return;
   }
   const f=S.form; const imp=Math.round(Number(String(f.importo).replace(/\./g,'').replace(',','.'))*100)/100;
@@ -877,9 +882,11 @@ document.addEventListener('click',e=>{
     case 'theme': THEME=arg; LS.set('ft_theme',THEME); applyTheme(); render(); break;
     case 'export': doExport(); break;
     case 'save-cfg': CFG.url=document.getElementById('cfg-url').value.trim(); CFG.token=document.getElementById('cfg-token').value.trim(); LS.set('ft_cfg',CFG); S.server=null; toast('Collegamento salvato'); sync(); break;
-    case 'ftype': S.form.tipo=arg; S.form.voce=null; renderForm(); break;
+    case 'ftype': S.form.tipo=arg; S.form.voce=null; S.form.cliente=''; renderForm(); break;
+    case 'step': if(arg==='amt' && !S.form.voce) break; S.form.step=arg; renderForm(); break;
+    case 'key': pressKey(arg); break;
     case 'fdate': S.form.date=arg; renderForm(); break;
-    case 'pickcat': S.form.voce=arg; renderForm(); break;
+    case 'pickcat': if(S.form.voce!==arg) S.form.cliente=''; S.form.voce=arg; S.form.step='amt'; renderForm(); break;
     case 'pickcl': S.form.cliente=arg; S.form.newCl=false; renderForm(); break;
     case 'newcl': S.form.newCl=true; S.form.cliente=''; renderForm(); setTimeout(()=>{ const i=document.getElementById('fcl'); i&&i.focus(); },30); break;
     case 'save': saveForm(); break;
@@ -890,6 +897,21 @@ document.addEventListener('click',e=>{
       else closeSwipes(); break; }
   }
 });
+/* Tastierino dell'importo */
+function pressKey(k){
+  const f=S.form; if(!f) return; let v=f.importo||'';
+  if(k==='del') v=v.slice(0,-1);
+  else if(k===','){ if(!v.includes(',')) v=(v||'0')+','; }
+  else { const [a,d]=v.split(','); if(d!==undefined && d.length>=2) return; if(d===undefined && a.length>=7) return; v = v==='0'? k : v+k; }
+  f.importo=v; refreshSaveBtns();
+}
+// Da computer si può scrivere l'importo anche con la tastiera
+document.addEventListener('keydown',e=>{
+  if(!S.form || S.form.step!=='amt' || /INPUT|TEXTAREA/.test(document.activeElement&&document.activeElement.tagName)) return;
+  if(/^[0-9]$/.test(e.key)) pressKey(e.key); else if(e.key===','||e.key==='.') pressKey(','); else if(e.key==='Backspace') pressKey('del'); else if(e.key==='Enter') saveForm(); else return;
+  e.preventDefault();
+});
+
 /* Scorri a sinistra su una transazione per mostrare "Elimina" */
 const SW={r:null,until:0};
 function closeSwipes(){ document.querySelectorAll('.sw .row.open').forEach(r=>{ r.classList.remove('open'); r.style.transform=''; }); }
@@ -943,7 +965,7 @@ function DEMO(){
 
 /* ================== Aggiornamento automatico ==================
    iPhone tiene in memoria la pagina: all'apertura controlla se su GitHub c'è una versione nuova e la carica. */
-const APP_VERSION='2026-10-30.4';
+const APP_VERSION='2026-11-01.1';
 function checkUpdate(){
   if(location.protocol!=='https:') return;
   fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
