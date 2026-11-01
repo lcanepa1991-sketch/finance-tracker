@@ -819,6 +819,33 @@ function renderForm(){
 function formMissing(){ const f=S.form; const n=Number(String(f.importo).replace(/\./g,'').replace(',','.'));
   if(!(n>0)) return 'Inserisci un importo'; if(!f.voce) return 'Scegli una categoria';
   if(isFree(cats().find(c=>c.voce===f.voce)) && !String(f.cliente||'').trim()) return 'Scegli o scrivi il cliente'; return ''; }
+/* Modifica budget: le voci del "Piano di Spesa" */
+const BCOL = k => k==='Reddito'? COLORS.Entrate : (COLORS[k]||COLORS.Lavoro);
+const bnum = v => { const n=Number(String(v||'').replace(/\./g,'').replace(',','.')); return isFinite(n)&&n>0? Math.round(n*100)/100 : 0; };
+function openBudget(){
+  const vals={}; (S.data.plan||[]).forEach(sec=>sec.items.forEach(it=>{ vals[it.row]= it.amount? String(it.amount).replace('.',',') : ''; }));
+  S.bform={vals}; renderBudgetForm();
+  document.getElementById('sheet').classList.add('open'); document.getElementById('backdrop').classList.add('open');
+}
+function bsum(sec){ return sec.items.reduce((a,it)=>a+bnum(S.bform.vals[it.row]),0); }
+function renderBudgetForm(){
+  const plan=S.data.plan||[];
+  document.getElementById('sheet').innerHTML=`
+  <div class="sh-head"><button class="link" data-act="close-sheet">Annulla</button><div class="sh-title">Modifica budget</div><span style="min-width:70px"></span></div>
+  <div class="sh-body">
+    ${plan.map(sec=>`<div class="bsec" style="color:${BCOL(sec.key)}"><span>${esc(sec.title)}</span><span class="num" id="bsum-${sec.key}">${eur(bsum(sec))}</span></div>
+      <div class="list">${sec.items.map(it=>`<label class="bitem"><span class="k">${esc(it.label)}</span><input class="bin num" data-row="${it.row}" inputmode="decimal" enterkeyhint="done" placeholder="0" value="${esc(S.bform.vals[it.row])}" autocomplete="off"><span class="eu">€</span></label>`).join('')}</div>`).join('')}
+    <div class="note">Le voci sono quelle del foglio "Piano di Spesa". Per aggiungerne una nuova scrivila nel foglio, nella riga "➕ Aggiungi qui".</div>
+  </div>
+  <div class="sh-foot"><div class="need"></div><button class="primary" data-act="bsave">Salva budget</button></div>`;
+  icons();
+}
+function saveBudget(){
+  const items=[]; (S.data.plan||[]).forEach(sec=>sec.items.forEach(it=>{ const a=bnum(S.bform.vals[it.row]); if(Math.abs(a-it.amount)>0.004) items.push({row:it.row,amount:a}); }));
+  closeForm();
+  if(!items.length){ toast('Nessuna modifica'); return; }
+  commit({action:'budget',payload:{items}}); toast('Budget aggiornato');
+}
 function footHTML(){
   const keys=['1','2','3','4','5','6','7','8','9',',','0','del'];
   return `<div class="need" id="fneed"></div>
@@ -965,7 +992,7 @@ function DEMO(){
 
 /* ================== Aggiornamento automatico ==================
    iPhone tiene in memoria la pagina: all'apertura controlla se su GitHub c'è una versione nuova e la carica. */
-const APP_VERSION='2026-11-01.1';
+const APP_VERSION='2026-11-01.2';
 function checkUpdate(){
   if(location.protocol!=='https:') return;
   fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
