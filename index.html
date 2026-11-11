@@ -65,6 +65,13 @@ input,textarea{font:inherit;color:inherit}
 .delta b{font-weight:500}
 .up{color:var(--red)} .down{color:var(--green)}
 .pills{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.costs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 2px;max-width:420px}
+.cost{background:var(--card);border-radius:14px;box-shadow:var(--shadow);padding:9px 12px}
+.cost .k{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);font-weight:600}
+.cost .k i{width:8px;height:8px;border-radius:50%;flex:none}
+.cost .v{font-size:18px;font-weight:700;margin-top:2px;white-space:nowrap}
+.cost .v small{font-size:13px;color:var(--muted);font-weight:600;margin-left:5px}
+.splitbar{grid-column:1/-1;display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--chip)}
 .pill{display:inline-flex;align-items:center;gap:6px;font-size:17px;font-weight:500}
 .pill i,.pill .dotic{width:22px;height:22px;border-radius:50%;display:inline-grid;place-items:center;color:#fff;font-style:normal;font-weight:800;font-size:16px;line-height:1}
 .pill.in{color:var(--green)} .pill.in .dotic{background:var(--green)}
@@ -512,6 +519,20 @@ function txRow(t){
 }
 const pending = id => S.queue.some(o=>(o.payload.tx&&o.payload.tx.id===id)||o.payload.id===id);
 
+/* Costi fissi = uscite già scritte nel foglio per il mese (affitto, abbonamenti…);
+   costi variabili = uscite inserite dall'app. % sul totale uscite del mese. */
+function costsHTML(sp){
+  const out=Math.round(sp.out*100)/100;
+  const varc=Math.round(txIn('M',S.y,S.m).filter(x=>x.tipo==='uscita').reduce((a,x)=>a+x.importo,0)*100)/100;
+  const fixed=Math.max(0,Math.round((out-varc)*100)/100);
+  const pf = out>0? Math.round(fixed/out*100) : 0, pv = out>0? 100-pf : 0;
+  const cf=COLORS.Bisogni, cv=COLORS.Sfizi;
+  return `<div class="costs">
+    <div class="cost"><div class="k"><i style="background:${cf}"></i>Costi fissi</div><div class="v num">${eur(fixed)}<small>${pf}%</small></div></div>
+    <div class="cost"><div class="k"><i style="background:${cv}"></i>Costi variabili</div><div class="v num">${eur(varc)}<small>${pv}%</small></div></div>
+    <div class="splitbar">${out>0?`<span style="width:${pf}%;background:${cf}"></span><span style="width:${pv}%;background:${cv}"></span>`:''}</div>
+  </div>`;
+}
 function viewHome(){
   const t=totals('M',S.y,S.m); const sp=split(t);
   // grafico: 6 mesi che finiscono col mese scelto (o col mese corrente)
@@ -542,7 +563,7 @@ function viewHome(){
      ? `<label class="search">${ic('search')}<input id="q" placeholder="Cerca" value="${esc(S.search)}" autocomplete="off"></label><button class="iconbtn" data-act="search-close">${ic('x')}</button>`
      : `<h1>Home</h1><button class="iconbtn" data-act="search-open" aria-label="Cerca">${ic('search')}</button>`}</div>
   ${syncBanner()}
-  <div class="hero"><div><div class="big num">${eur(sp.net)}</div><div class="sub">Flusso cassa · ${MESI[S.m]} ${S.y}</div></div>
+  <div class="hero"><div><div class="big num">${eur(sp.net)}</div><div class="sub">Flusso cassa · ${MESI[S.m]} ${S.y}</div>${costsHTML(sp)}</div>
     <div class="pills" style="margin-top:6px"><span class="pill in num"><span class="dotic">+</span>${eur(sp.inc)}</span><span class="pill out num"><span class="dotic">−</span>${eur(sp.out)}</span></div></div>
   <div class="card" style="padding:14px 10px 6px">${barChart(items)}</div>
   ${monthNav('month')}
@@ -992,7 +1013,7 @@ function DEMO(){
 
 /* ================== Aggiornamento automatico ==================
    iPhone tiene in memoria la pagina: all'apertura controlla se su GitHub c'è una versione nuova e la carica. */
-const APP_VERSION='2026-11-01.2';
+const APP_VERSION='2026-11-11.1';
 function checkUpdate(){
   if(location.protocol!=='https:') return;
   fetch(location.pathname+'?check='+Date.now(),{cache:'no-store'}).then(r=>r.ok?r.text():'').then(t=>{
